@@ -1,11 +1,17 @@
 {
-  "name": "cafe-backend",
-  "version": "1.0.0",
-  "description": "",
+  "name": "cafe-pos",
+  "version": "2.0.0",
+  "description": "Local cafe POS for Windows terminals and waiters phones",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --env-file=.env src/server.js",
-    "check": "node --check src/server.js && node --check src/routes/auth.js && node --check src/routes/orders.js && node --check src/routes/menu.js && node --check src/routes/tables.js && node --check src/routes/shifts.js"
+    "start": "node src/server.js",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "check": "node scripts/check.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "playwright test",
+    "db:init": "node scripts/init-db.js",
+    "backup": "node scripts/backup.js"
   },
   "keywords": [],
   "author": "",
@@ -14,9 +20,27 @@
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^1.48.0",
     "pg": "^8.20.0",
-    "socket.io": "^4.8.3"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

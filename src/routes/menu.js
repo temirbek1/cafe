@@ -1,56 +1,121 @@
-const express = require("express");
-const pool = require("../db");
-const { authenticate, allowRoles } = require("../middleware/auth");
-
+const express = require('express');
+const pool = require('../db');
+const { authenticate, allowRoles } = require('../middleware/auth');
+const {
+  text,
+  cents,
+  decimal,
+  integer,
+  boolean,
+  fail,
+  transaction,
+  audit,
+  changed,
+} = require('../lib');
 const router = express.Router();
-const managerOnly = [authenticate, allowRoles("admin", "manager")];
-
-router.get("/", authenticate, async (req, res, next) => {
-  try {
-    const result = await pool.query(`SELECT mi.id, mi.name, mi.price, mi.active, mi.is_quick, mi.category_id,
-      mc.name AS category FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id = mi.category_id
-      WHERE mi.active = TRUE ORDER BY mc.sort_order NULLS LAST, mi.name`);
-    res.json(result.rows);
-  } catch (err) { next(err); }
+router.use(authenticate);
+const managers = allowRoles('admin', 'manager');
+router.get('/', async (req, res) => {
+  const all = req.query.all === 'true' && ['admin', 'manager'].includes(req.user.role);
+  res.json(
+    (
+      await pool.query(
+        `SELECT mi.*,mc.name AS category FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id=mi.category_id WHERE ($1 OR mi.active=TRUE) ORDER BY mc.sort_order NULLS LAST,mi.name`,
+        [all],
+      )
+    ).rows,
+  );
 });
-
-router.get("/categories", authenticate, async (req, res, next) => {
-  try { res.json((await pool.query("SELECT * FROM menu_categories ORDER BY sort_order, name")).rows); }
-  catch (err) { next(err); }
+router.get('/categories', async (req, res) =>
+  res.json((await pool.query('SELECT * FROM menu_categories ORDER BY sort_order,name')).rows),
+);
+router.post('/categories', managers, async (req, res) => {
+  const name = text(req.body.name, 'Категория'),
+    sort = integer(req.body.sort_order || 0, 'Порядок', 0, 9999);
+  const data = await transaction(async (c) => {
+    const row = (
+      await c.query('INSERT INTO menu_categories(name,sort_order) VALUES($1,$2) RETURNING *', [
+        name,
+        sort,
+      ])
+    ).rows[0];
+    await audit(c, req, 'category.create', row.id, { name });
+    return row;
+  });
+  changed(req, 'menu');
+  res.status(201).json(data);
 });
-
-router.post("/categories", ...managerOnly, async (req, res, next) => {
-  try {
-    const { name, sort_order = 0 } = req.body || {};
-    if (!name) return res.status(400).json({ error: "category name is required" });
-    const result = await pool.query("INSERT INTO menu_categories (name, sort_order) VALUES ($1, $2) RETURNING *", [name.trim(), sort_order]);
-    res.status(201).json(result.rows[0]);
-  } catch (err) { if (err.code === "23505") return res.status(409).json({ error: "category already exists" }); next(err); }
+router.patch('/categories/:id', managers, async (req, res) => {
+  const name = text(req.body.name, 'Категория'),
+    sort = integer(req.body.sort_order || 0, 'Порядок', 0, 9999);
+  const data = await transaction(async (c) => {
+    const row = (
+      await c.query('UPDATE menu_categories SET name=$1,sort_order=$2 WHERE id=$3 RETURNING *', [
+        name,
+        sort,
+        req.params.id,
+      ])
+    ).rows[0];
+    if (!row) fail(404, 'Категория не найдена');
+    await audit(c, req, 'category.update', row.id, { name, sort });
+    return row;
+  });
+  changed(req, 'menu');
+  res.json(data);
 });
-
-router.post("/", ...managerOnly, async (req, res, next) => {
-  try {
-    const { name, price, category_id = null, active = true, is_quick = false } = req.body || {};
-    if (!name || !Number.isFinite(Number(price)) || Number(price) < 0) return res.status(400).json({ error: "valid name and price are required" });
-    const result = await pool.query(
-      "INSERT INTO menu_items (name, price, category_id, active, is_quick) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [name.trim(), Number(price), category_id, Boolean(active), Boolean(is_quick)]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) { next(err); }
+router.delete('/categories/:id', managers, async (req, res) => {
+  await transaction(async (c) => {
+    if (
+      !(await c.query('DELETE FROM menu_categories WHERE id=$1 RETURNING id', [req.params.id]))
+        .rowCount
+    )
+      fail(404, 'Категория не найдена');
+    await audit(c, req, 'category.delete', req.params.id);
+  });
+  changed(req, 'menu');
+  res.status(204).end();
 });
-
-router.patch("/:id", ...managerOnly, async (req, res, next) => {
-  try {
-    const { name, price, category_id, active, is_quick } = req.body || {};
-    if (price !== undefined && (!Number.isFinite(Number(price)) || Number(price) < 0)) return res.status(400).json({ error: "price must be non-negative" });
-    const result = await pool.query(`UPDATE menu_items SET
-      name = COALESCE($1, name), price = COALESCE($2, price), category_id = COALESCE($3, category_id),
-      active = COALESCE($4, active), is_quick = COALESCE($5, is_quick) WHERE id = $6 RETURNING *`,
-      [name?.trim(), price === undefined ? null : Number(price), category_id === undefined ? null : category_id, active, is_quick, req.params.id]);
-    if (!result.rows[0]) return res.status(404).json({ error: "menu item not found" });
-    res.json(result.rows[0]);
-  } catch (err) { next(err); }
+router.post('/', managers, async (req, res) => {
+  const name = text(req.body.name, 'Название'),
+    price = decimal(cents(req.body.price, 'Цена', true)),
+    category = req.body.category_id ? integer(req.body.category_id, 'Категория') : null;
+  const active = req.body.active === undefined ? true : boolean(req.body.active, 'Доступность'),
+    quick = req.body.is_quick === undefined ? false : boolean(req.body.is_quick, 'Быстрое меню');
+  const data = await transaction(async (c) => {
+    const row = (
+      await c.query(
+        'INSERT INTO menu_items(name,price,category_id,active,is_quick) VALUES($1,$2,$3,$4,$5) RETURNING *',
+        [name, price, category, active, quick],
+      )
+    ).rows[0];
+    await audit(c, req, 'menu.create', row.id, { name, price });
+    return row;
+  });
+  changed(req, 'menu');
+  res.status(201).json(data);
 });
-
+router.patch('/:id', managers, async (req, res) => {
+  const values = {};
+  if (req.body.name !== undefined) values.name = text(req.body.name, 'Название');
+  if (req.body.price !== undefined) values.price = decimal(cents(req.body.price, 'Цена', true));
+  if (req.body.category_id !== undefined)
+    values.category_id = req.body.category_id ? integer(req.body.category_id, 'Категория') : null;
+  for (const key of ['active', 'is_quick'])
+    if (req.body[key] !== undefined) values[key] = boolean(req.body[key], key);
+  if (!Object.keys(values).length) fail(400, 'Нет изменений');
+  const data = await transaction(async (c) => {
+    const keys = Object.keys(values);
+    const row = (
+      await c.query(
+        `UPDATE menu_items SET ${keys.map((k, i) => `${k}=$${i + 1}`).join(',')} WHERE id=$${keys.length + 1} RETURNING *`,
+        [...Object.values(values), req.params.id],
+      )
+    ).rows[0];
+    if (!row) fail(404, 'Блюдо не найдено');
+    await audit(c, req, 'menu.update', row.id, values);
+    return row;
+  });
+  changed(req, 'menu');
+  res.json(data);
+});
 module.exports = router;
