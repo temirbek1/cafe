@@ -15,10 +15,11 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  Menu,
 } from 'lucide-react';
 import { api, roleNames } from './api';
 import type { User, Snapshot, OrderData, Page, Run } from './types';
-import { Field, Spinner } from './ui';
+import { Field, Modal, Spinner } from './ui';
 import Pos from './Pos';
 import Catalog from './Catalog';
 import { HistoryPage, ReportsPage, ShiftsPage, TeamPage, SettingsPage } from './Pages';
@@ -37,6 +38,9 @@ function permitted(page: Page, user: User) {
   if (user.role === 'cashier') return ['pos', 'history', 'reports', 'shifts'].includes(page);
   if (user.role === 'manager') return !['team', 'settings'].includes(page);
   return true;
+}
+function primaryOnPhone(page: Page, user: User) {
+  return ['pos', 'history', user.role === 'cashier' ? 'reports' : 'catalog'].includes(page);
 }
 
 function Login({
@@ -137,7 +141,7 @@ function Login({
                   name="login"
                   required
                   autoComplete="username"
-                  autoFocus
+                  autoFocus={window.matchMedia('(min-width: 951px) and (pointer: fine)').matches}
                   placeholder="Ваш логин"
                   pattern={configured ? undefined : '[a-zA-Z0-9_.-]{2,60}'}
                 />
@@ -185,8 +189,10 @@ export default function App() {
     [connected, setConnected] = useState(true),
     [error, setError] = useState(''),
     [toast, setToast] = useState(''),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [moreOpen, setMoreOpen] = useState(false);
   const userRef = useRef(user),
+    contentRef = useRef<HTMLElement>(null),
     orderRef = useRef<string | null>(null),
     busyRef = useRef(false),
     sequence = useRef(0);
@@ -200,6 +206,7 @@ export default function App() {
     setOrder(null);
     setSelectedTable(null);
     setPage('pos');
+    setMoreOpen(false);
   }
   const refresh = useCallback(async () => {
     if (!userRef.current) return;
@@ -251,6 +258,10 @@ export default function App() {
       setBooting(false);
     }
   }
+  useEffect(() => {
+    contentRef.current?.scrollTo(0, 0);
+    window.scrollTo(0, 0);
+  }, [page]);
   useEffect(() => {
     void bootstrap();
     const ended = () => {
@@ -399,6 +410,8 @@ export default function App() {
       </div>
     );
   const common = { user, data, busy, run, revision };
+  const pages = navigation.filter((n) => permitted(n.id, user));
+  const morePages = pages.filter((n) => !primaryOnPhone(n.id, user));
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -417,19 +430,28 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Основное меню">
-          {navigation
-            .filter((n) => permitted(n.id, user))
-            .map((n) => (
-              <button
-                key={n.id}
-                className={page === n.id ? 'nav-item active' : 'nav-item'}
-                onClick={() => setPage(n.id)}
-                aria-current={page === n.id ? 'page' : undefined}
-              >
-                <n.icon size={21} />
-                <span>{n.label}</span>
-              </button>
-            ))}
+          {pages.map((n) => (
+            <button
+              key={n.id}
+              className={`nav-item${page === n.id ? ' active' : ''}${primaryOnPhone(n.id, user) ? '' : ' secondary-nav'}`}
+              onClick={() => setPage(n.id)}
+              aria-current={page === n.id ? 'page' : undefined}
+            >
+              <n.icon size={21} />
+              <span>{n.label}</span>
+            </button>
+          ))}
+          {morePages.length > 0 && (
+            <button
+              className={`nav-item more-nav${morePages.some((n) => n.id === page) ? ' active' : ''}`}
+              aria-haspopup="dialog"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen(true)}
+            >
+              <Menu size={21} />
+              <span>Ещё</span>
+            </button>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <span className="sidebar-dot" />
@@ -500,7 +522,7 @@ export default function App() {
             )}
           </div>
         )}
-        <main className={'content ' + (page === 'pos' ? 'pos-content' : '')}>
+        <main ref={contentRef} className={'content ' + (page === 'pos' ? 'pos-content' : '')}>
           {page === 'pos' && (
             <Pos
               {...common}
@@ -520,6 +542,26 @@ export default function App() {
           {page === 'settings' && <SettingsPage {...common} />}
         </main>
       </div>
+      {moreOpen && (
+        <Modal title="Разделы" onClose={() => setMoreOpen(false)}>
+          <div className="navigation-menu">
+            {pages.map((n) => (
+              <button
+                key={n.id}
+                className={page === n.id ? 'selected' : ''}
+                aria-current={page === n.id ? 'page' : undefined}
+                onClick={() => {
+                  setPage(n.id);
+                  setMoreOpen(false);
+                }}
+              >
+                <n.icon size={22} />
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={19} />

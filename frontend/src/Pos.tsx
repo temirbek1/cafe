@@ -225,6 +225,9 @@ export default function Pos({
   );
   const free = data.tables.filter((t) => t.status === 'free').length;
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab]);
+  useEffect(() => {
     const focus = (e: KeyboardEvent) => {
       if (
         e.key === '/' &&
