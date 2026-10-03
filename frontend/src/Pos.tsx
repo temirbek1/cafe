@@ -39,6 +39,7 @@ type Dialog =
 function Payment({
   order,
   bill,
+  qrImage,
   busy,
   run,
   done,
@@ -46,6 +47,7 @@ function Payment({
 }: {
   order: OrderData;
   bill: string | null;
+  qrImage: string;
   busy: boolean;
   run: Run;
   done: (o: OrderData) => void;
@@ -152,18 +154,30 @@ function Payment({
             </div>
           </>
         ) : (
-          <label className="check-field">
-            <input
-              type="checkbox"
-              required
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            <span>
-              Оплата {method === 'card' ? 'на банковском терминале' : 'по QR'} успешно подтверждена.
-              Деньги получены.
-            </span>
-          </label>
+          <>
+            {method === 'online' && (
+              <div className="payment-qr">
+                {qrImage ? (
+                  <img src={qrImage} alt="QR-код для оплаты заказа" />
+                ) : (
+                  <p className="hint">Добавьте изображение QR-кода в настройках печати.</p>
+                )}
+                {qrImage && <p>Отсканируйте QR-код банковским приложением</p>}
+              </div>
+            )}
+            <label className="check-field">
+              <input
+                type="checkbox"
+                required
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              <span>
+                Оплата {method === 'card' ? 'на банковском терминале' : 'по QR'} успешно подтверждена.
+                Деньги получены.
+              </span>
+            </label>
+          </>
         )}
         {method !== 'cash' && (
           <p className="hint">
@@ -789,6 +803,7 @@ export default function Pos({
           key={current!.id + '-' + bill}
           order={order}
           bill={bill}
+          qrImage={data.settings.qr_image || ''}
           busy={busy}
           run={run}
           close={close}

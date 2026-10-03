@@ -847,7 +847,7 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
             </div>
             <h2 className="printer-section-title">QR-код для оплаты</h2>
             <p className="hint">
-              Загрузите изображение QR-кода из банка. Оно появится в квитанции об оплате и будет отправляться на принтер вместе с чеком.
+              Загрузите изображение QR-кода из банка. Оно появится в окне оплаты, когда выбран способ «QR».
             </p>
             <Field label="Изображение QR-кода (PNG или JPEG, до 1 МБ)">
               <input

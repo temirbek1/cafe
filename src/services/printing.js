@@ -125,14 +125,11 @@ function receiptLines(p) {
   ].filter(Boolean);
 }
 function receiptHtml(p) {
-  const qrImage = p.kind !== 'refund' && /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(p.settings.qr_image || '')
-    ? p.settings.qr_image
-    : '';
-  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Квитанция №${escape(p.number)}</title><style>@page{size:${p.settings.receipt_width}mm auto;margin:3mm}*{box-sizing:border-box}body{font:13px monospace;width:${p.settings.receipt_width - 6}mm;max-width:calc(100% - 16px);margin:20px auto;color:#000;background:#fff}p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}p:first-of-type{font-size:19px;font-weight:bold}.qr-image{display:block;width:48mm;height:auto;margin:10px auto;image-rendering:auto}button{padding:12px;font:inherit;cursor:pointer;width:100%;margin-bottom:18px}@media print{body{margin:0;max-width:none}button{display:none}}</style><button id="print">Печатать</button>${receiptLines(
+  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Квитанция №${escape(p.number)}</title><style>@page{size:${p.settings.receipt_width}mm auto;margin:3mm}*{box-sizing:border-box}body{font:13px monospace;width:${p.settings.receipt_width - 6}mm;max-width:calc(100% - 16px);margin:20px auto;color:#000;background:#fff}p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}p:first-of-type{font-size:19px;font-weight:bold}button{padding:12px;font:inherit;cursor:pointer;width:100%;margin-bottom:18px}@media print{body{margin:0;max-width:none}button{display:none}}</style><button id="print">Печатать</button>${receiptLines(
     p,
   )
     .map((line) => `<p>${escape(line)}</p>`)
-    .join('')}${qrImage ? `<img class="qr-image" src="${escape(qrImage)}" alt="QR-код оплаты">` : ''}<script src="/receipt-print.js"></script></html>`;
+    .join('')}<script src="/receipt-print.js"></script></html>`;
 }
 function powershell(script, input) {
   return new Promise((resolve, reject) => {
@@ -216,7 +213,6 @@ async function startPrinter(io) {
             printer: settings.printer_name,
             width: job.payload.settings.receipt_width,
             lines: receiptLines(job.payload),
-            qrImage: job.kind === 'payment' ? job.payload.settings.qr_image || '' : '',
           });
         }
         await pool.query(
