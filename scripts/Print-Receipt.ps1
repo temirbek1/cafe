@@ -12,16 +12,24 @@ try {
   $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(8,8,8,8)
   $font = New-Object System.Drawing.Font('Consolas',9)
   $paperWidth = [int]($payload.width / 25.4 * 100)
+  $qr = $null
+  $qrSize = 0
+  if ($payload.qrImage -match '^data:image/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$') {
+    $qrBytes = [Convert]::FromBase64String($Matches[2])
+    $qrStream = New-Object System.IO.MemoryStream(,$qrBytes)
+    $qr = [System.Drawing.Image]::FromStream($qrStream)
+    $qrSize = [single][Math]::Min(150, $paperWidth - 24)
+  }
   $measure = $document.PrinterSettings.CreateMeasurementGraphics()
   try {
-    $paperHeight = 16
+    $paperHeight = 16 + $(if ($qr) { $qrSize + 12 } else { 0 })
     foreach ($line in $payload.lines) {
       $paperHeight += [Math]::Ceiling($measure.MeasureString([string]$line, $font, $paperWidth - 16).Height + 4)
     }
   } finally { $measure.Dispose() }
   # Keep short receipts short; long orders continue on additional pages.
   $document.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize('Receipt', $paperWidth, [int][Math]::Max(150, [Math]::Min(1200, $paperHeight + 10)))
-  $state = @{index=0; lines=@($payload.lines)}
+  $state = @{index=0; lines=@($payload.lines); qrPrinted=$false}
   $document.add_PrintPage({
     param($sender,$event)
     $y = [single]$event.MarginBounds.Top
@@ -36,10 +44,21 @@ try {
       $y += $height
       $state.index++
     }
+    if ($qr -and -not $state.qrPrinted) {
+      if (($y + $qrSize) -gt $event.MarginBounds.Bottom) { $event.HasMorePages=$true; return }
+      $qrScale = [Math]::Min($qrSize / $qr.Width, $qrSize / $qr.Height)
+      $qrDrawWidth = [single]($qr.Width * $qrScale)
+      $qrDrawHeight = [single]($qr.Height * $qrScale)
+      $qrX = [single]($event.MarginBounds.Left + (($width - $qrDrawWidth) / 2))
+      $qrY = [single]($y + (($qrSize - $qrDrawHeight) / 2))
+      $event.Graphics.DrawImage($qr, $qrX, $qrY, $qrDrawWidth, $qrDrawHeight)
+      $state.qrPrinted=$true
+    }
     $event.HasMorePages=$false
   })
   $document.Print()
   $font.Dispose()
+  if ($qr) { $qr.Dispose(); $qrStream.Dispose() }
   $document.Dispose()
   '{"submitted":true}'
 } catch {

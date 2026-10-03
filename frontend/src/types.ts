@@ -89,6 +89,7 @@ export type Settings = {
   printer_name: string;
   kitchen_printer_ip: string;
   kitchen_printer_port: number;
+  qr_image: string;
   windows_print_available: boolean;
   fiscal_connected: boolean;
   bank_connected: boolean;

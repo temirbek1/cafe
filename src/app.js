@@ -42,7 +42,7 @@ function createServer() {
       return res.status(415).json({ error: 'Ожидается JSON' });
     next();
   });
-  app.use(express.json({ limit: '64kb' }));
+  app.use(express.json({ limit: '2mb' }));
   app.use((req, res, next) => {
     req.body ??= {};
     next();

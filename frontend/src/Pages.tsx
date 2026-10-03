@@ -703,7 +703,8 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
     >('/reports/audit', revision);
   const [draft, setDraft] = useState<Settings>(data.settings),
     [retry, setRetry] = useState<PrintJob | null>(null),
-    [tab, setTab] = useState('general');
+    [tab, setTab] = useState('general'),
+    [qrError, setQrError] = useState('');
   function change(key: keyof Settings, value: unknown) {
     setDraft((s) => ({ ...s, [key]: value }));
   }
@@ -844,6 +845,47 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                 />
               </Field>
             </div>
+            <h2 className="printer-section-title">QR-код для оплаты</h2>
+            <p className="hint">
+              Загрузите изображение QR-кода из банка. Оно появится в квитанции об оплате и будет отправляться на принтер вместе с чеком.
+            </p>
+            <Field label="Изображение QR-кода (PNG или JPEG, до 1 МБ)">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (!file) return;
+                  setQrError('');
+                  if (!['image/png', 'image/jpeg'].includes(file.type)) {
+                    setQrError('Выберите файл PNG или JPEG.');
+                    event.currentTarget.value = '';
+                    return;
+                  }
+                  if (file.size > 1024 * 1024) {
+                    setQrError('Размер файла не должен превышать 1 МБ.');
+                    event.currentTarget.value = '';
+                    return;
+                  }
+                  const reader = new FileReader();
+                  event.currentTarget.value = '';
+                  reader.onload = () => {
+                    if (typeof reader.result === 'string') change('qr_image', reader.result);
+                  };
+                  reader.onerror = () => setQrError('Не удалось прочитать файл.');
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </Field>
+            {qrError && <p className="form-error">{qrError}</p>}
+            {draft.qr_image && (
+              <div className="qr-image-preview">
+                <img src={draft.qr_image} alt="Предварительный просмотр QR-кода оплаты" />
+                <button type="button" className="secondary" onClick={() => change('qr_image', '')}>
+                  Удалить QR-код
+                </button>
+              </div>
+            )}
             <p className="hint">
               Заказ отправляется на кухню по кнопке в заказе. Печать на кухне настроена отдельно от чеков оплаты.
             </p>

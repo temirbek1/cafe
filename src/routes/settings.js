@@ -30,6 +30,20 @@ router.patch('/', admin, async (req, res) => {
   }
   if (input.kitchen_printer_port !== undefined)
     updates.kitchen_printer_port = integer(input.kitchen_printer_port, 'Порт кухонного принтера', 1, 65535);
+  if (input.qr_image !== undefined) {
+    const image = input.qr_image;
+    if (image === '') updates.qr_image = '';
+    else {
+      const match = typeof image === 'string' && image.match(/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!match) fail(400, 'Загрузите QR-картинку в формате PNG или JPEG');
+      const bytes = Buffer.from(match[2], 'base64');
+      if (bytes.length > 1024 * 1024) fail(400, 'Размер QR-картинки не должен превышать 1 МБ');
+      const isPng = match[1] === 'png' && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      const isJpeg = match[1] === 'jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+      if (!isPng && !isJpeg) fail(400, 'Файл не соответствует формату PNG или JPEG');
+      updates.qr_image = image;
+    }
+  }
   if (!updates.name) fail(400, 'Введите название кафе');
   if (input.receipt_width !== undefined) {
     const width = integer(input.receipt_width, 'Ширина чека', 58, 80);
@@ -49,7 +63,11 @@ router.patch('/', admin, async (req, res) => {
   }
   await transaction(async (c) => {
     await c.query('UPDATE settings SET value=$1 WHERE id=TRUE', [JSON.stringify(updates)]);
-    await audit(c, req, 'settings.update', 'cafe', updates);
+    const { qr_image, ...auditSettings } = updates;
+    await audit(c, req, 'settings.update', 'cafe', {
+      ...auditSettings,
+      qr_image_configured: Boolean(qr_image),
+    });
   });
   changed(req, 'settings');
   res.json(updates);
