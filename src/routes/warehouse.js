@@ -27,6 +27,22 @@ router.get('/', async (req, res) => {
   res.json(items);
 });
 
+router.post('/sync-menu', async (req, res) => {
+  const added = await transaction(async (client) => {
+    const rows = (await client.query(
+      `INSERT INTO warehouse_items(name,unit,quantity,min_quantity)
+       SELECT DISTINCT name,'шт.',0,0 FROM menu_items WHERE true
+       ON CONFLICT(name) DO NOTHING
+       RETURNING id,name`,
+    )).rows;
+    for (const row of rows)
+      await audit(client, req, 'warehouse.import_menu', row.id, { name: row.name });
+    return rows;
+  });
+  if (added.length) changed(req, 'warehouse');
+  res.json({ added: added.length });
+});
+
 router.post('/', admin, async (req, res) => {
   const values = itemInput(req.body);
   const item = await transaction(async (client) => {

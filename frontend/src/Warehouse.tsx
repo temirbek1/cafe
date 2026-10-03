@@ -31,7 +31,8 @@ export default function Warehouse({
 
   useEffect(() => {
     let active = true;
-    api<WarehouseItem[]>('/warehouse')
+    api('/warehouse/sync-menu', 'POST')
+      .then(() => api<WarehouseItem[]>('/warehouse'))
       .then((rows) => {
         if (active) {
           setItems(rows);
@@ -77,7 +78,7 @@ export default function Warehouse({
       <section className="section-card">
         <p className="hint">
           {admin
-            ? 'Указывайте текущий остаток и минимальный запас. Позиции ниже минимума будут отмечены.'
+            ? 'Позиции из меню добавляются автоматически с единицей «шт.» и нулевым остатком. Укажите реальные единицы, остатки и минимальный запас.'
             : 'Просмотр товаров и текущих остатков. Редактировать склад может только администратор.'}
         </p>
         {error && <p className="form-error" role="alert">{error}</p>}
@@ -94,7 +95,7 @@ export default function Warehouse({
             </thead>
             <tbody>
               {items.map((item) => {
-                const low = Number(item.quantity) <= Number(item.min_quantity);
+                const low = Number(item.min_quantity) > 0 && Number(item.quantity) <= Number(item.min_quantity);
                 return (
                   <tr key={item.id}>
                     <td>
