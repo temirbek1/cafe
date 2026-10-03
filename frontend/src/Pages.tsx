@@ -784,7 +784,7 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
       {tab === 'printing' && (
         <>
           <form className="section-card" onSubmit={submit}>
-            <h2>Принтер терминала</h2>
+            <h2>Принтер чеков кассы</h2>
             <div className="form-grid">
               <Field label="Способ печати">
                 <select
@@ -823,6 +823,30 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                 </select>
               </Field>
             )}
+            <h2 className="printer-section-title">Принтер кухни</h2>
+            <div className="form-grid">
+              <Field label="IP-адрес кухонного принтера" hint="Например, 192.168.1.50. Принтер должен быть доступен в локальной сети.">
+                <input
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="192.168.1.50"
+                  value={draft.kitchen_printer_ip || ''}
+                  onChange={(e) => change('kitchen_printer_ip', e.target.value)}
+                />
+              </Field>
+              <Field label="Порт печати" hint="Обычно 9100 для сетевых ESC/POS-принтеров.">
+                <input
+                  type="number"
+                  min="1"
+                  max="65535"
+                  value={draft.kitchen_printer_port || 9100}
+                  onChange={(e) => change('kitchen_printer_port', Number(e.target.value))}
+                />
+              </Field>
+            </div>
+            <p className="hint">
+              Заказ отправляется на кухню по кнопке в заказе. Печать на кухне настроена отдельно от чеков оплаты.
+            </p>
             <p className="hint">
               Сначала установите драйвер USB-принтера и распечатайте тестовую страницу Windows.
               Автоматическая печать выполняется на терминале, в том числе для действий с телефона.
@@ -850,7 +874,7 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                       <b>№{j.order_id}</b>
                       <small>{date(j.created_at)}</small>
                     </td>
-                    <td>{j.kind === 'refund' ? 'Возврат' : 'Оплата'}</td>
+                    <td>{j.kind === 'refund' ? 'Возврат' : j.kind === 'kitchen' ? 'Кухня' : 'Оплата'}</td>
                     <td>
                       <span>{printNames[j.status]}</span>
                       {j.error && <small className="danger-text">{j.error}</small>}
@@ -858,15 +882,15 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                     <td>
                       <a
                         className="icon-button"
-                        title="Открыть квитанцию"
-                        href={`/orders/${j.order_id}/receipt?kind=${j.kind}`}
+                        title={j.kind === 'kitchen' ? 'Открыть заказ' : 'Открыть квитанцию'}
+                        href={j.kind === 'kitchen' ? `/orders/${j.order_id}` : `/orders/${j.order_id}/receipt?kind=${j.kind}`}
                         target="_blank"
                         rel="noreferrer"
                       >
                         <Printer size={17} />
                       </a>
                       {!['pending', 'printing'].includes(j.status) &&
-                        draft.print_mode === 'windows' && (
+                        (j.kind === 'kitchen' ? Boolean(draft.kitchen_printer_ip) : draft.print_mode === 'windows') && (
                           <button
                             className="icon-button"
                             aria-label={`Повторить печать ${j.id}`}

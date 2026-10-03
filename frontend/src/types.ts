@@ -62,6 +62,7 @@ export type OrderData = {
   payments: Payment[];
   bills: { id: string; amount: string; status: 'open' | 'paid' }[];
   refunds: { id: string; amount: string; method: string }[];
+  kitchen_print_status?: string | null;
 };
 export type Shift = {
   id: string;
@@ -86,6 +87,8 @@ export type Settings = {
   receipt_width: number;
   print_mode: 'browser' | 'windows';
   printer_name: string;
+  kitchen_printer_ip: string;
+  kitchen_printer_port: number;
   windows_print_available: boolean;
   fiscal_connected: boolean;
   bank_connected: boolean;

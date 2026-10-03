@@ -684,6 +684,23 @@
   .order-footer {
     padding: 17px;
   }
+  .order-secondary {
+    flex-wrap: wrap;
+  }
+  .order-secondary > button {
+    flex: 1 1 130px;
+    min-width: 0;
+    white-space: normal;
+  }
+  .order-footer .total-row,
+  .order-footer .sub-total {
+    gap: 10px;
+  }
+  .order-footer .total-row strong,
+  .order-footer .sub-total b {
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
   .order-items {
     padding: 5px 17px;
   }

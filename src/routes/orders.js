@@ -21,7 +21,7 @@ const {
   activeShift,
   paidCents,
 } = require('../services/orders');
-const { queueReceipt, receiptHtml } = require('../services/printing');
+const { queueReceipt, queueKitchen, receiptHtml } = require('../services/printing');
 const { randomId } = require('../config');
 const router = express.Router();
 router.use(authenticate);
@@ -79,7 +79,9 @@ router.get('/table/:tableId/open', async (req, res) => {
   ).rows[0];
   if (!row) return res.json({ order: null, items: [], payments: [], bills: [], refunds: [] });
   access(req.user, row);
-  res.json(await getOrder(pool, row.id));
+  const data = await getOrder(pool, row.id);
+  data.kitchen_print_status = (await pool.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [row.id])).rows[0]?.status || null;
+  res.json(data);
 });
 router.post('/', async (req, res) => {
   const tableId = integer(req.body.table_id, 'Стол'),
@@ -107,6 +109,7 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const data = await getOrder(pool, req.params.id);
   access(req.user, data.order);
+  data.kitchen_print_status = (await pool.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [req.params.id])).rows[0]?.status || null;
   res.json(data);
 });
 router.patch('/:id', async (req, res) => {
@@ -130,6 +133,16 @@ router.patch('/:id', async (req, res) => {
     return getOrder(client, order.id);
   });
   changed(req);
+  res.json(data);
+});
+router.post('/:id/kitchen', async (req, res) => {
+  const data = await transaction(async (client) => {
+    const order = await lockOrder(client, req);
+    const kitchenStatus = await queueKitchen(client, order.id);
+    await audit(client, req, 'order.kitchen_print', order.id);
+    return { ...(await getOrder(client, order.id)), kitchen_print_status: kitchenStatus };
+  });
+  changed(req, 'printing');
   res.json(data);
 });
 router.post('/:id/items', async (req, res) => {

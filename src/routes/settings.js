@@ -22,6 +22,14 @@ router.patch('/', admin, async (req, res) => {
     updates = { ...old };
   for (const key of ['name', 'address', 'phone', 'printer_name'])
     if (input[key] !== undefined) updates[key] = input[key] ? text(input[key], key, 200) : '';
+  if (input.kitchen_printer_ip !== undefined) {
+    const ip = input.kitchen_printer_ip ? text(input.kitchen_printer_ip, 'IP кухонного принтера', 15) : '';
+    if (ip && (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) || ip.split('.').some((part) => Number(part) > 255)))
+      fail(400, 'Введите корректный IPv4-адрес кухонного принтера');
+    updates.kitchen_printer_ip = ip;
+  }
+  if (input.kitchen_printer_port !== undefined)
+    updates.kitchen_printer_port = integer(input.kitchen_printer_port, 'Порт кухонного принтера', 1, 65535);
   if (!updates.name) fail(400, 'Введите название кафе');
   if (input.receipt_width !== undefined) {
     const width = integer(input.receipt_width, 'Ширина чека', 58, 80);
@@ -70,8 +78,9 @@ router.post(
     if (req.body.confirm !== true)
       fail(400, 'Подтвердите, что проверили принтер и очередь Windows');
     const job = await transaction(async (c) => {
-      const mode = (await c.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value
-        .print_mode;
+      const printSettings = (await c.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
+      const jobKind = (await c.query('SELECT kind FROM print_jobs WHERE id=$1', [req.params.id])).rows[0]?.kind;
+      const mode = jobKind === 'kitchen' ? (printSettings.kitchen_printer_ip ? 'windows' : 'browser') : printSettings.print_mode;
       const job = (
         await c.query(
           "UPDATE print_jobs SET status=$1,error=NULL,updated_at=NOW() WHERE id=$2 AND status NOT IN ('pending','printing') RETURNING id",

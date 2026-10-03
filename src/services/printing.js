@@ -1,9 +1,72 @@
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const path = require('node:path');
 const pool = require('../db');
 const { transaction, fail } = require('../lib');
 const { getOrder } = require('./orders');
 const methods = { cash: 'Наличные', card: 'Карта', online: 'QR' };
+function kitchenLines(payload) {
+  return [
+    payload.settings.name,
+    'ЗАКАЗ НА КУХНЮ',
+    `Заказ № ${payload.number}`,
+    `${payload.order.table_name} · ${payload.order.waiter_name}`,
+    `Гостей: ${payload.order.guest_count}`,
+    new Date(payload.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }),
+    '--------------------------------',
+    ...payload.items.flatMap((item) => [
+      `${item.quantity} x ${item.name}`,
+      ...(item.note ? [`  ${item.note}`] : []),
+    ]),
+    ...(payload.order.comment ? ['--------------------------------', `Комментарий: ${payload.order.comment}`] : []),
+    '--------------------------------',
+    '',
+    '',
+  ];
+}
+function encodeCp866(value) {
+  const extra = { 'Ё': 0xf0, 'ё': 0xf1, 'Є': 0xf2, 'є': 0xf3, 'Ї': 0xf4, 'ї': 0xf5, 'Ў': 0xf6, 'ў': 0xf7, '№': 0xfc };
+  return Buffer.from([...String(value)].map((character) => {
+    const code = character.codePointAt(0);
+    if (code < 0x80) return code;
+    if (code >= 0x0410 && code <= 0x042f) return 0x80 + code - 0x0410;
+    if (code >= 0x0430 && code <= 0x043f) return 0xa0 + code - 0x0430;
+    if (code >= 0x0440 && code <= 0x044f) return 0xe0 + code - 0x0440;
+    return extra[character] || 0x3f;
+  }));
+}
+function sendKitchenTicket(address, port, lines) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: address, port }, () => {
+      socket.end(Buffer.concat([Buffer.from([0x1b, 0x40, 0x1b, 0x74, 17]), encodeCp866(lines.join('\n') + '\n'), Buffer.from([0x1d, 0x56, 0x00])]));
+    });
+    const timer = setTimeout(() => socket.destroy(new Error('Истекло время ожидания кухонного принтера')), 10000);
+    socket.once('error', reject);
+    socket.once('close', (hadError) => {
+      clearTimeout(timer);
+      if (!hadError) resolve();
+    });
+  });
+}
+async function queueKitchen(client, orderId) {
+  const data = await getOrder(client, orderId);
+  if (!data.items.some((item) => item.status === 'active')) fail(400, 'Добавьте блюда перед отправкой на кухню');
+  const settings = (await client.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
+  if (!settings.kitchen_printer_ip) fail(400, 'Укажите IP кухонного принтера в настройках печати');
+  const payload = {
+    kind: 'kitchen',
+    number: String(orderId),
+    created_at: new Date().toISOString(),
+    settings,
+    order: data.order,
+    items: data.items.filter((item) => item.status === 'active'),
+  };
+  await client.query(
+    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'pending') ON CONFLICT(order_id,kind) DO NOTHING",
+    [orderId, JSON.stringify(payload)],
+  );
+  return (await client.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [orderId])).rows[0]?.status || 'pending';
+}
 async function queueReceipt(client, orderId, kind) {
   const data = await getOrder(client, orderId),
     settings = (await client.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
@@ -124,11 +187,12 @@ async function startPrinter(io) {
     busy = true;
     try {
       const settings = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
-      if (settings.print_mode !== 'windows') return;
+      const allowReceiptPrinting = settings.print_mode === 'windows';
       const job = await transaction(async (c) => {
         const job = (
           await c.query(
-            "SELECT * FROM print_jobs WHERE status='pending' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
+            "SELECT * FROM print_jobs WHERE status='pending' AND (kind='kitchen' OR $1::boolean) ORDER BY CASE WHEN kind='kitchen' THEN 0 ELSE 1 END,id LIMIT 1 FOR UPDATE SKIP LOCKED",
+            [allowReceiptPrinting],
           )
         ).rows[0];
         if (job)
@@ -140,12 +204,17 @@ async function startPrinter(io) {
       });
       if (!job) return;
       try {
-        if (!settings.printer_name) fail(400, 'Выберите принтер в настройках');
-        await powershell('Print-Receipt.ps1', {
-          printer: settings.printer_name,
-          width: job.payload.settings.receipt_width,
-          lines: receiptLines(job.payload),
-        });
+        if (job.kind === 'kitchen') {
+          if (!settings.kitchen_printer_ip) fail(400, 'Укажите IP кухонного принтера в настройках');
+          await sendKitchenTicket(settings.kitchen_printer_ip, Number(settings.kitchen_printer_port || 9100), kitchenLines(job.payload));
+        } else {
+          if (!settings.printer_name) fail(400, 'Выберите принтер в настройках');
+          await powershell('Print-Receipt.ps1', {
+            printer: settings.printer_name,
+            width: job.payload.settings.receipt_width,
+            lines: receiptLines(job.payload),
+          });
+        }
         await pool.query(
           "UPDATE print_jobs SET status='submitted',error=NULL,updated_at=NOW() WHERE id=$1",
           [job.id],
@@ -167,4 +236,4 @@ async function startPrinter(io) {
   timer.unref();
   return () => clearInterval(timer);
 }
-module.exports = { queueReceipt, receiptHtml, receiptLines, printers, startPrinter };
+module.exports = { queueReceipt, queueKitchen, kitchenLines, encodeCp866, receiptHtml, receiptLines, printers, startPrinter };

@@ -217,6 +217,7 @@ export default function Pos({
     items = order?.items.filter((i) => i.status === 'active') || [],
     paid = order?.payments.reduce((s, p) => s + Number(p.amount), 0) || 0;
   const editable = current?.status === 'open' && !order?.bills.length && !order?.payments.length;
+  const kitchenSent = Boolean(order?.kitchen_print_status);
   const activeMenu = data.menu.filter(
     (d) =>
       d.active &&
@@ -692,6 +693,17 @@ export default function Pos({
                 )}
                 {current.status === 'open' ? (
                   <>
+                    <button
+                      className="secondary full-width kitchen-send"
+                      disabled={busy || !items.length || !data.settings.kitchen_printer_ip || kitchenSent}
+                      onClick={() => void mutate(`/orders/${current.id}/kitchen`, { version: current.version })}
+                    >
+                      <UtensilsCrossed size={18} />
+                      {kitchenSent ? 'Отправлено на кухню' : 'Отправить заказ на кухню'}
+                    </button>
+                    {!data.settings.kitchen_printer_ip && (
+                      <small className="hint">Укажите IP принтера в настройках печати.</small>
+                    )}
                     {cashier ? (
                       <>
                         {!order!.bills.length && (
