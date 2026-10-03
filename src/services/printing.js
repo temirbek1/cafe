@@ -38,7 +38,10 @@ function encodeCp866(value) {
 function sendKitchenTicket(address, port, lines) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ host: address, port }, () => {
-      socket.end(Buffer.concat([Buffer.from([0x1b, 0x40, 0x1b, 0x74, 17]), encodeCp866(lines.join('\n') + '\n'), Buffer.from([0x1d, 0x56, 0x00])]));
+      // Some ESC/POS printers start in Chinese double-byte mode. Disable it
+      // before selecting the Cyrillic PC866 table, or Russian bytes are
+      // interpreted as Chinese characters even though the printer supports Russian.
+      socket.end(Buffer.concat([Buffer.from([0x1b, 0x40, 0x1c, 0x2e, 0x1b, 0x74, 17]), encodeCp866(lines.join('\n') + '\n'), Buffer.from([0x1d, 0x56, 0x00])]));
     });
     const timer = setTimeout(() => socket.destroy(new Error('Истекло время ожидания кухонного принтера')), 10000);
     socket.once('error', reject);
