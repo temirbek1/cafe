@@ -21,7 +21,7 @@ const {
   activeShift,
   paidCents,
 } = require('../services/orders');
-const { queueReceipt, queueKitchen, receiptHtml } = require('../services/printing');
+const { queueReceipt, queueKitchen, receiptHtml, kitchenHtml } = require('../services/printing');
 const { randomId } = require('../config');
 const router = express.Router();
 router.use(authenticate);
@@ -373,6 +373,15 @@ router.get('/:id/receipt', cashier, async (req, res) => {
     settings: { ...job.payload.settings, print_mode: settings.print_mode },
   };
   res.set('Cache-Control', 'no-store').type('html').send(receiptHtml(payload));
+});
+router.get('/:id/kitchen-ticket', cashier, async (req, res) => {
+  const job = (
+    await pool.query("SELECT payload FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [
+      req.params.id,
+    ])
+  ).rows[0];
+  if (!job) fail(404, 'Кухонный чек не найден');
+  res.set('Cache-Control', 'no-store').type('html').send(kitchenHtml(job.payload));
 });
 router.post('/:id/print', cashier, async (req, res) => {
   const result = await transaction(async (client) => {

@@ -1,5 +1,4 @@
 const { spawn } = require('node:child_process');
-const net = require('node:net');
 const path = require('node:path');
 const pool = require('../db');
 const { transaction, fail } = require('../lib');
@@ -24,38 +23,13 @@ function kitchenLines(payload) {
     '',
   ];
 }
-function encodeCp866(value) {
-  const extra = { 'Ё': 0xf0, 'ё': 0xf1, 'Є': 0xf2, 'є': 0xf3, 'Ї': 0xf4, 'ї': 0xf5, 'Ў': 0xf6, 'ў': 0xf7, '№': 0xfc };
-  return Buffer.from([...String(value)].map((character) => {
-    const code = character.codePointAt(0);
-    if (code < 0x80) return code;
-    if (code >= 0x0410 && code <= 0x042f) return 0x80 + code - 0x0410;
-    if (code >= 0x0430 && code <= 0x043f) return 0xa0 + code - 0x0430;
-    if (code >= 0x0440 && code <= 0x044f) return 0xe0 + code - 0x0440;
-    return extra[character] || 0x3f;
-  }));
-}
-function sendKitchenTicket(address, port, lines) {
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host: address, port }, () => {
-      // Some ESC/POS printers start in Chinese double-byte mode. Disable it
-      // before selecting the Cyrillic PC866 table, or Russian bytes are
-      // interpreted as Chinese characters even though the printer supports Russian.
-      socket.end(Buffer.concat([Buffer.from([0x1b, 0x40, 0x1c, 0x2e, 0x1b, 0x74, 17]), encodeCp866(lines.join('\n') + '\n'), Buffer.from([0x1d, 0x56, 0x00])]));
-    });
-    const timer = setTimeout(() => socket.destroy(new Error('Истекло время ожидания кухонного принтера')), 10000);
-    socket.once('error', reject);
-    socket.once('close', (hadError) => {
-      clearTimeout(timer);
-      if (!hadError) resolve();
-    });
-  });
+function kitchenHtml(payload) {
+  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Заказ №${escape(payload.number)} — кухня</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{font:14px Arial,sans-serif;width:72mm;max-width:100%;margin:16px auto;color:#000}h1{font-size:20px;margin:0 0 10px}p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.item{font-size:17px;font-weight:bold;margin-top:12px}.note{font-size:14px;margin:3px 0 0 12px}.rule{border:0;border-top:1px dashed #000;margin:10px 0}button{padding:10px 14px;font:inherit;cursor:pointer;margin-bottom:14px}@media print{body{margin:0;width:auto}button{display:none}}</style><button onclick="window.print()">Печать / сохранить PDF</button><h1>${escape(payload.settings.name)}<br>ЗАКАЗ НА КУХНЮ №${escape(payload.number)}</h1><p>${escape(payload.order.table_name)} · ${escape(payload.order.waiter_name)}</p><p>Гостей: ${escape(payload.order.guest_count)}</p><p>${escape(new Date(payload.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }))}</p><hr class="rule">${payload.items.map((item) => `<p class="item">${escape(item.quantity)} × ${escape(item.name)}</p>${item.note ? `<p class="note">${escape(item.note)}</p>` : ''}`).join('')}${payload.order.comment ? `<hr class="rule"><p>Комментарий: ${escape(payload.order.comment)}</p>` : ''}<script>window.addEventListener('load',()=>window.print())</script></html>`;
 }
 async function queueKitchen(client, orderId) {
   const data = await getOrder(client, orderId);
   if (!data.items.some((item) => item.status === 'active')) fail(400, 'Добавьте блюда перед отправкой на кухню');
   const settings = (await client.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
-  if (!settings.kitchen_printer_ip) fail(400, 'Укажите IP кухонного принтера в настройках печати');
   const payload = {
     kind: 'kitchen',
     number: String(orderId),
@@ -65,7 +39,7 @@ async function queueKitchen(client, orderId) {
     items: data.items.filter((item) => item.status === 'active'),
   };
   await client.query(
-    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'pending') ON CONFLICT(order_id,kind) DO NOTHING",
+    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'manual') ON CONFLICT(order_id,kind) DO NOTHING",
     [orderId, JSON.stringify(payload)],
   );
   return (await client.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [orderId])).rows[0]?.status || 'pending';
@@ -204,7 +178,7 @@ async function startPrinter(io) {
       const job = await transaction(async (c) => {
         const job = (
           await c.query(
-            "SELECT * FROM print_jobs WHERE status='pending' AND (kind='kitchen' OR $1::boolean) ORDER BY CASE WHEN kind='kitchen' THEN 0 ELSE 1 END,id LIMIT 1 FOR UPDATE SKIP LOCKED",
+            "SELECT * FROM print_jobs WHERE status='pending' AND kind<>'kitchen' AND $1::boolean ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
             [allowReceiptPrinting],
           )
         ).rows[0];
@@ -217,17 +191,12 @@ async function startPrinter(io) {
       });
       if (!job) return;
       try {
-        if (job.kind === 'kitchen') {
-          if (!settings.kitchen_printer_ip) fail(400, 'Укажите IP кухонного принтера в настройках');
-          await sendKitchenTicket(settings.kitchen_printer_ip, Number(settings.kitchen_printer_port || 9100), kitchenLines(job.payload));
-        } else {
-          if (!settings.printer_name) fail(400, 'Выберите принтер в настройках');
-          await powershell('Print-Receipt.ps1', {
-            printer: settings.printer_name,
-            width: job.payload.settings.receipt_width,
-            lines: receiptLines(job.payload),
-          });
-        }
+        if (!settings.printer_name) fail(400, 'Выберите принтер в настройках');
+        await powershell('Print-Receipt.ps1', {
+          printer: settings.printer_name,
+          width: job.payload.settings.receipt_width,
+          lines: receiptLines(job.payload),
+        });
         await pool.query(
           "UPDATE print_jobs SET status='submitted',error=NULL,updated_at=NOW() WHERE id=$1",
           [job.id],
@@ -249,4 +218,4 @@ async function startPrinter(io) {
   timer.unref();
   return () => clearInterval(timer);
 }
-module.exports = { queueReceipt, queueKitchen, kitchenLines, encodeCp866, receiptHtml, receiptLines, printers, testPrint, startPrinter };
+module.exports = { queueReceipt, queueKitchen, kitchenLines, kitchenHtml, receiptHtml, receiptLines, printers, testPrint, startPrinter };

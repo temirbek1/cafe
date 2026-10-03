@@ -709,15 +709,12 @@ export default function Pos({
                   <>
                     <button
                       className="secondary full-width kitchen-send"
-                      disabled={busy || !items.length || !data.settings.kitchen_printer_ip || kitchenSent}
+                      disabled={busy || !items.length || kitchenSent}
                       onClick={() => void mutate(`/orders/${current.id}/kitchen`, { version: current.version })}
                     >
                       <UtensilsCrossed size={18} />
                       {kitchenSent ? 'Отправлено на кухню' : 'Отправить заказ на кухню'}
                     </button>
-                    {!data.settings.kitchen_printer_ip && (
-                      <small className="hint">Укажите IP принтера в настройках печати.</small>
-                    )}
                     {cashier ? (
                       <>
                         {!order!.bills.length && (

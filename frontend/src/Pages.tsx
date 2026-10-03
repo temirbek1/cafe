@@ -847,27 +847,10 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                 </p>
               </>
             )}
-            <h2 className="printer-section-title">Принтер кухни</h2>
-            <div className="form-grid">
-              <Field label="IP-адрес кухонного принтера" hint="Например, 192.168.1.50. Принтер должен быть доступен в локальной сети.">
-                <input
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="192.168.1.50"
-                  value={draft.kitchen_printer_ip || ''}
-                  onChange={(e) => change('kitchen_printer_ip', e.target.value)}
-                />
-              </Field>
-              <Field label="Порт печати" hint="Обычно 9100 для сетевых ESC/POS-принтеров.">
-                <input
-                  type="number"
-                  min="1"
-                  max="65535"
-                  value={draft.kitchen_printer_port || 9100}
-                  onChange={(e) => change('kitchen_printer_port', Number(e.target.value))}
-                />
-              </Field>
-            </div>
+            <h2 className="printer-section-title">Чек кухни</h2>
+            <p className="hint">
+              Кухонный чек открывается в браузере с русским текстом. В очереди печати откройте чек и выберите «Сохранить как PDF» или нужный принтер.
+            </p>
             <h2 className="printer-section-title">QR-код для оплаты</h2>
             <p className="hint">
               Загрузите изображение QR-кода из банка. Оно появится в окне оплаты, когда выбран способ «QR».
@@ -948,14 +931,14 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
                       <a
                         className="icon-button"
                         title={j.kind === 'kitchen' ? 'Открыть заказ' : 'Открыть квитанцию'}
-                        href={j.kind === 'kitchen' ? `/orders/${j.order_id}` : `/orders/${j.order_id}/receipt?kind=${j.kind}`}
+                        href={j.kind === 'kitchen' ? `/orders/${j.order_id}/kitchen-ticket` : `/orders/${j.order_id}/receipt?kind=${j.kind}`}
                         target="_blank"
                         rel="noreferrer"
                       >
                         <Printer size={17} />
                       </a>
                       {!['pending', 'printing'].includes(j.status) &&
-                        (j.kind === 'kitchen' ? Boolean(draft.kitchen_printer_ip) : draft.print_mode === 'windows') && (
+                        (j.kind === 'kitchen' || draft.print_mode === 'windows') && (
                           <button
                             className="icon-button"
                             aria-label={`Повторить печать ${j.id}`}

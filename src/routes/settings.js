@@ -108,7 +108,7 @@ router.post(
     const job = await transaction(async (c) => {
       const printSettings = (await c.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
       const jobKind = (await c.query('SELECT kind FROM print_jobs WHERE id=$1', [req.params.id])).rows[0]?.kind;
-      const mode = jobKind === 'kitchen' ? (printSettings.kitchen_printer_ip ? 'windows' : 'browser') : printSettings.print_mode;
+      const mode = jobKind === 'kitchen' ? 'browser' : printSettings.print_mode;
       const job = (
         await c.query(
           "UPDATE print_jobs SET status=$1,error=NULL,updated_at=NOW() WHERE id=$2 AND status NOT IN ('pending','printing') RETURNING id",
