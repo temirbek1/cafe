@@ -9,6 +9,7 @@ import {
   Clock3,
   Users,
   Settings as SettingsIcon,
+  Boxes,
   LogOut,
   Wifi,
   WifiOff,
@@ -23,6 +24,7 @@ import { Field, Modal, Spinner } from './ui';
 import Pos from './Pos';
 import Catalog from './Catalog';
 import { HistoryPage, ReportsPage, ShiftsPage, TeamPage, SettingsPage } from './Pages';
+import Warehouse from './Warehouse';
 
 const navigation = [
   { id: 'pos', label: 'Касса', icon: LayoutGrid },
@@ -32,10 +34,12 @@ const navigation = [
   { id: 'shifts', label: 'Смены', icon: Clock3 },
   { id: 'team', label: 'Сотрудники', icon: Users },
   { id: 'settings', label: 'Настройки', icon: SettingsIcon },
+  { id: 'warehouse', label: 'Склад', icon: Boxes },
 ] as const;
 function permitted(page: Page, user: User) {
-  if (user.role === 'waiter') return ['pos', 'history'].includes(page);
-  if (user.role === 'cashier') return ['pos', 'history', 'reports', 'shifts'].includes(page);
+  if (user.role === 'waiter') return ['pos', 'history', 'warehouse'].includes(page);
+  if (user.role === 'cashier')
+    return ['pos', 'history', 'reports', 'shifts', 'warehouse'].includes(page);
   if (user.role === 'manager') return !['team', 'settings'].includes(page);
   return true;
 }
@@ -540,6 +544,7 @@ export default function App() {
           {page === 'shifts' && <ShiftsPage {...common} />}{' '}
           {page === 'team' && <TeamPage {...common} />}{' '}
           {page === 'settings' && <SettingsPage {...common} />}
+          {page === 'warehouse' && <Warehouse {...common} />}
         </main>
       </div>
       {moreOpen && (

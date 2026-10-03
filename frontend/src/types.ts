@@ -102,5 +102,5 @@ export type Snapshot = {
   settings: Settings;
 };
 export type Run = (task: () => Promise<unknown>, success?: string) => Promise<boolean>;
-export type Page = 'pos' | 'history' | 'reports' | 'catalog' | 'shifts' | 'team' | 'settings';
+export type Page = 'pos' | 'history' | 'reports' | 'catalog' | 'shifts' | 'team' | 'settings' | 'warehouse';
 export type Shared = { user: User; data: Snapshot; busy: boolean; run: Run; revision: number };

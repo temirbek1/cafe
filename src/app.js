@@ -51,7 +51,16 @@ function createServer() {
     await pool.query('SELECT 1');
     res.json({ app: 'cafe-pos', status: 'ok' });
   });
-  for (const route of ['auth', 'orders', 'menu', 'tables', 'shifts', 'reports', 'settings'])
+  for (const route of [
+    'auth',
+    'orders',
+    'menu',
+    'tables',
+    'shifts',
+    'reports',
+    'settings',
+    'warehouse',
+  ])
     app.use(
       '/' + route,
       (req, res, next) => {
