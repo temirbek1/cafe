@@ -13,7 +13,7 @@ try {
   $font = New-Object System.Drawing.Font('Consolas',9)
   $paperWidth = [int]($payload.width / 25.4 * 100)
   # Leave a short feed tail so the cutter clears the printed text before cutting.
-  $printLines = @($payload.lines) + @(' ', ' ', ' ', ' ', ' ')
+  $printLines = @($payload.lines) + @(' ', ' ', ' ', ' ', '------------------------------')
   $measure = $document.PrinterSettings.CreateMeasurementGraphics()
   try {
     $paperHeight = 16

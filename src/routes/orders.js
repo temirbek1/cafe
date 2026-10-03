@@ -367,7 +367,12 @@ router.get('/:id/receipt', cashier, async (req, res) => {
     ])
   ).rows[0];
   if (!job) fail(404, 'Квитанция появится после полной оплаты или возврата');
-  res.set('Cache-Control', 'no-store').type('html').send(receiptHtml(job.payload));
+  const settings = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
+  const payload = {
+    ...job.payload,
+    settings: { ...job.payload.settings, print_mode: settings.print_mode },
+  };
+  res.set('Cache-Control', 'no-store').type('html').send(receiptHtml(payload));
 });
 router.post('/:id/print', cashier, async (req, res) => {
   const result = await transaction(async (client) => {
