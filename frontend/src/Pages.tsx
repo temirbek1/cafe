@@ -809,20 +809,43 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
               </Field>
             </div>
             {draft.print_mode === 'windows' && (
-              <Field label="Установленный принтер">
-                <select
-                  value={draft.printer_name}
-                  onChange={(e) => change('printer_name', e.target.value)}
-                  required
+              <>
+                <Field label="Установленный принтер">
+                  <select
+                    value={draft.printer_name}
+                    onChange={(e) => change('printer_name', e.target.value)}
+                    required
+                  >
+                    <option value="">Выберите принтер</option>
+                    {printers?.printers.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name} · {p.port}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy || !draft.printer_name}
+                  onClick={() =>
+                    run(
+                      () =>
+                        api('/settings/print-test', 'POST', {
+                          printer: draft.printer_name,
+                          width: draft.receipt_width,
+                        }),
+                      'Тестовый чек отправлен на принтер',
+                    )
+                  }
                 >
-                  <option value="">Выберите принтер</option>
-                  {printers?.printers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} · {p.port}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  Тестовая печать
+                </button>
+                <p className="hint">
+                  После выбора сохраните настройки. Телефоны будут отправлять чеки на этот принтер
+                  без диалога печати.
+                </p>
+              </>
             )}
             <h2 className="printer-section-title">Принтер кухни</h2>
             <div className="form-grid">

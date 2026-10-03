@@ -3,7 +3,7 @@ const os = require('node:os');
 const pool = require('../db');
 const { authenticate, allowRoles } = require('../middleware/auth');
 const { text, integer, fail, transaction, audit, changed } = require('../lib');
-const { printers } = require('../services/printing');
+const { printers, testPrint } = require('../services/printing');
 const router = express.Router();
 router.use(authenticate);
 const admin = allowRoles('admin');
@@ -80,6 +80,16 @@ router.get('/network', admin, (req, res) => {
   res.json({ addresses });
 });
 router.get('/printers', admin, async (req, res) => res.json({ printers: await printers() }));
+router.post('/print-test', admin, async (req, res) => {
+  if (process.platform !== 'win32') fail(400, 'Windows print is available only on the POS terminal');
+  const printer = text(req.body.printer, 'Printer', 200);
+  const width = integer(req.body.width, 'Receipt width', 58, 80);
+  if (![58, 80].includes(width)) fail(400, 'Receipt width must be 58 or 80 mm');
+  if (!(await printers()).some((item) => item.name === printer)) fail(400, 'Printer not found in Windows');
+  const settings = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
+  await testPrint(printer, width, settings.name);
+  res.json({ submitted: true });
+});
 router.get('/print-jobs', allowRoles('admin', 'manager', 'cashier'), async (req, res) =>
   res.json(
     (

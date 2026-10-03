@@ -774,7 +774,17 @@ export default function Pos({
                       {statusNames[current.status]} · {date(current.closed_at)}
                     </div>
                     {['paid', 'refunded'].includes(current.status) && cashier && (
-                      <button className="secondary full-width" onClick={() => setDialog('receipt')}>
+                      <button
+                        className="secondary full-width"
+                        onClick={() =>
+                          data.settings.print_mode === 'windows'
+                            ? run(
+                                () => api(`/orders/${current.id}/print`, 'POST'),
+                                'Чек отправлен на принтер терминала',
+                              )
+                            : setDialog('receipt')
+                        }
+                      >
                         <Printer size={18} />
                         Квитанция и печать
                       </button>
@@ -809,7 +819,7 @@ export default function Pos({
           close={close}
           done={(result) => {
             onOrder(result);
-            setDialog(result.order.status === 'paid' ? 'receipt' : null);
+            setDialog(result.order.status === 'paid' && data.settings.print_mode !== 'windows' ? 'receipt' : null);
           }}
         />
       )}

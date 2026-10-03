@@ -369,4 +369,22 @@ router.get('/:id/receipt', cashier, async (req, res) => {
   if (!job) fail(404, 'Квитанция появится после полной оплаты или возврата');
   res.set('Cache-Control', 'no-store').type('html').send(receiptHtml(job.payload));
 });
+router.post('/:id/print', cashier, async (req, res) => {
+  const result = await transaction(async (client) => {
+    const order = await lockOrder(client, req, { open: false });
+    if (!['paid', 'refunded'].includes(order.status)) fail(400, 'Only paid orders can be printed');
+    const settings = (await client.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
+    if (settings.print_mode !== 'windows') fail(400, 'Automatic Windows printing is not enabled');
+    const kind = order.status === 'refunded' ? 'refund' : 'payment';
+    const job = (await client.query(
+      "UPDATE print_jobs SET status='pending',error=NULL,updated_at=NOW() WHERE order_id=$1 AND kind=$2 AND status NOT IN ('pending','printing') RETURNING id",
+      [order.id, kind],
+    )).rows[0];
+    if (!job) fail(409, 'Print job is already queued or is not available');
+    await audit(client, req, 'print.request', job.id);
+    return { submitted: true };
+  });
+  changed(req, 'printing');
+  res.json(result);
+});
 module.exports = router;

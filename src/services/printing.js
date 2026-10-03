@@ -177,6 +177,13 @@ function powershell(script, input) {
 async function printers() {
   return process.platform === 'win32' ? powershell('List-Printers.ps1') : [];
 }
+async function testPrint(printer, width, cafeName) {
+  return powershell('Print-Receipt.ps1', {
+    printer,
+    width,
+    lines: [cafeName || 'Cafe POS', 'Printer test', new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }), 'This is a test receipt.'],
+  });
+}
 async function startPrinter(io) {
   await pool.query(
     "UPDATE print_jobs SET status='uncertain',error='Сервер перезапущен во время печати. Проверьте принтер перед повтором' WHERE status='printing'",
@@ -236,4 +243,4 @@ async function startPrinter(io) {
   timer.unref();
   return () => clearInterval(timer);
 }
-module.exports = { queueReceipt, queueKitchen, kitchenLines, encodeCp866, receiptHtml, receiptLines, printers, startPrinter };
+module.exports = { queueReceipt, queueKitchen, kitchenLines, encodeCp866, receiptHtml, receiptLines, printers, testPrint, startPrinter };
