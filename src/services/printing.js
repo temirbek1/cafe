@@ -39,7 +39,7 @@ async function queueKitchen(client, orderId) {
     items: data.items.filter((item) => item.status === 'active'),
   };
   await client.query(
-    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'manual') ON CONFLICT(order_id,kind) DO NOTHING",
+    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'manual') ON CONFLICT(order_id,kind) DO UPDATE SET payload=EXCLUDED.payload,status='manual',error=NULL,updated_at=NOW()",
     [orderId, JSON.stringify(payload)],
   );
   return (await client.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [orderId])).rows[0]?.status || 'pending';
