@@ -20,16 +20,8 @@ router.patch('/', admin, async (req, res) => {
   const old = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
   const input = req.body,
     updates = { ...old };
-  for (const key of ['name', 'address', 'phone', 'printer_name'])
+  for (const key of ['name', 'address', 'phone', 'printer_name', 'kitchen_printer_name'])
     if (input[key] !== undefined) updates[key] = input[key] ? text(input[key], key, 200) : '';
-  if (input.kitchen_printer_ip !== undefined) {
-    const ip = input.kitchen_printer_ip ? text(input.kitchen_printer_ip, 'IP кухонного принтера', 15) : '';
-    if (ip && (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) || ip.split('.').some((part) => Number(part) > 255)))
-      fail(400, 'Введите корректный IPv4-адрес кухонного принтера');
-    updates.kitchen_printer_ip = ip;
-  }
-  if (input.kitchen_printer_port !== undefined)
-    updates.kitchen_printer_port = integer(input.kitchen_printer_port, 'Порт кухонного принтера', 1, 65535);
   if (input.qr_image !== undefined) {
     const image = input.qr_image;
     if (image === '') updates.qr_image = '';
@@ -60,6 +52,11 @@ router.patch('/', admin, async (req, res) => {
     const available = await printers();
     if (!available.some((p) => p.name === updates.printer_name))
       fail(400, 'Принтер не найден в Windows');
+  }
+  if (updates.kitchen_printer_name) {
+    if (process.platform !== 'win32') fail(400, 'Kitchen printing is available only on Windows');
+    if (!(await printers()).some((p) => p.name === updates.kitchen_printer_name))
+      fail(400, 'Kitchen printer not found in Windows');
   }
   await transaction(async (c) => {
     await c.query('UPDATE settings SET value=$1 WHERE id=TRUE', [JSON.stringify(updates)]);
@@ -108,7 +105,9 @@ router.post(
     const job = await transaction(async (c) => {
       const printSettings = (await c.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
       const jobKind = (await c.query('SELECT kind FROM print_jobs WHERE id=$1', [req.params.id])).rows[0]?.kind;
-      const mode = jobKind === 'kitchen' ? 'browser' : printSettings.print_mode;
+      const mode = jobKind === 'kitchen'
+        ? (process.platform === 'win32' && printSettings.kitchen_printer_name ? 'windows' : 'browser')
+        : printSettings.print_mode;
       const job = (
         await c.query(
           "UPDATE print_jobs SET status=$1,error=NULL,updated_at=NOW() WHERE id=$2 AND status NOT IN ('pending','printing') RETURNING id",

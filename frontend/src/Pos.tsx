@@ -277,12 +277,10 @@ export default function Pos({
       if (kind === 'create')
         result = await api('/orders', 'POST', {
           table_id: selectedTable,
-          guest_count: Number(f.get('guests')),
           comment: f.get('comment'),
         });
       else if (kind === 'details')
         result = await api(`/orders/${current!.id}`, 'PATCH', {
-          guest_count: Number(f.get('guests')),
           comment: f.get('comment'),
           version: current!.version,
         });
@@ -575,12 +573,7 @@ export default function Pos({
                   <h3>{current.table_name}</h3>
                   <Badge status={current.status} label={statusNames[current.status]} />
                 </div>
-                <p>
-                  <Users size={15} />
-                  {current.guest_count} {current.guest_count === 1 ? 'гость' : 'гостей'}
-                  <span>·</span>
-                  {current.waiter_name}
-                </p>
+                <p>{current.waiter_name}</p>
                 {current.comment && <div className="order-comment">{current.comment}</div>}
                 {editable && (
                   <button
@@ -589,7 +582,7 @@ export default function Pos({
                     onClick={() => setDialog('details')}
                   >
                     <NotebookPen size={15} />
-                    Гости и комментарий
+                    Комментарий
                   </button>
                 )}
               </div>
@@ -855,16 +848,6 @@ export default function Pos({
           <form onSubmit={form}>
             {['create', 'details'].includes(dialog) ? (
               <>
-                <Field label="Количество гостей">
-                  <input
-                    name="guests"
-                    type="number"
-                    min="1"
-                    max="1000"
-                    defaultValue={dialog === 'details' ? current?.guest_count : 1}
-                    required
-                  />
-                </Field>
                 <Field label="Комментарий к заказу">
                   <textarea
                     name="comment"

@@ -87,8 +87,7 @@ export type Settings = {
   receipt_width: number;
   print_mode: 'browser' | 'windows';
   printer_name: string;
-  kitchen_printer_ip: string;
-  kitchen_printer_port: number;
+  kitchen_printer_name: string;
   qr_image: string;
   windows_print_available: boolean;
   fiscal_connected: boolean;

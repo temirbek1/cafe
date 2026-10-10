@@ -10,7 +10,6 @@ function kitchenLines(payload) {
     'ЗАКАЗ НА КУХНЮ',
     `Заказ № ${payload.number}`,
     `${payload.order.table_name} · ${payload.order.waiter_name}`,
-    `Гостей: ${payload.order.guest_count}`,
     new Date(payload.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }),
     '--------------------------------',
     ...payload.items.flatMap((item) => [
@@ -24,7 +23,7 @@ function kitchenLines(payload) {
   ];
 }
 function kitchenHtml(payload) {
-  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Заказ №${escape(payload.number)} — кухня</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{font:14px Arial,sans-serif;width:72mm;max-width:100%;margin:16px auto;color:#000}h1{font-size:20px;margin:0 0 10px}p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.item{font-size:17px;font-weight:bold;margin-top:12px}.note{font-size:14px;margin:3px 0 0 12px}.rule{border:0;border-top:1px dashed #000;margin:10px 0}button{padding:10px 14px;font:inherit;cursor:pointer;margin-bottom:14px}@media print{body{margin:0;width:auto}button{display:none}}</style><button onclick="window.print()">Печать / сохранить PDF</button><h1>${escape(payload.settings.name)}<br>ЗАКАЗ НА КУХНЮ №${escape(payload.number)}</h1><p>${escape(payload.order.table_name)} · ${escape(payload.order.waiter_name)}</p><p>Гостей: ${escape(payload.order.guest_count)}</p><p>${escape(new Date(payload.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }))}</p><hr class="rule">${payload.items.map((item) => `<p class="item">${escape(item.quantity)} × ${escape(item.name)}</p>${item.note ? `<p class="note">${escape(item.note)}</p>` : ''}`).join('')}${payload.order.comment ? `<hr class="rule"><p>Комментарий: ${escape(payload.order.comment)}</p>` : ''}<script>window.addEventListener('load',()=>window.print())</script></html>`;
+  return `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Заказ №${escape(payload.number)} — кухня</title><style>@page{size:80mm auto;margin:4mm}*{box-sizing:border-box}body{font:14px Arial,sans-serif;width:72mm;max-width:100%;margin:16px auto;color:#000}h1{font-size:20px;margin:0 0 10px}p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.item{font-size:17px;font-weight:bold;margin-top:12px}.note{font-size:14px;margin:3px 0 0 12px}.rule{border:0;border-top:1px dashed #000;margin:10px 0}button{padding:10px 14px;font:inherit;cursor:pointer;margin-bottom:14px}@media print{body{margin:0;width:auto}button{display:none}}</style><button onclick="window.print()">Печать / сохранить PDF</button><h1>${escape(payload.settings.name)}<br>ЗАКАЗ НА КУХНЮ №${escape(payload.number)}</h1><p>${escape(payload.order.table_name)} · ${escape(payload.order.waiter_name)}</p><p>${escape(new Date(payload.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }))}</p><hr class="rule">${payload.items.map((item) => `<p class="item">${escape(item.quantity)} × ${escape(item.name)}</p>${item.note ? `<p class="note">${escape(item.note)}</p>` : ''}`).join('')}${payload.order.comment ? `<hr class="rule"><p>Комментарий: ${escape(payload.order.comment)}</p>` : ''}<script>window.addEventListener('load',()=>window.print())</script></html>`;
 }
 async function queueKitchen(client, orderId) {
   const data = await getOrder(client, orderId);
@@ -39,8 +38,8 @@ async function queueKitchen(client, orderId) {
     items: data.items.filter((item) => item.status === 'active'),
   };
   await client.query(
-    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,'manual') ON CONFLICT(order_id,kind) DO UPDATE SET payload=EXCLUDED.payload,status='manual',error=NULL,updated_at=NOW()",
-    [orderId, JSON.stringify(payload)],
+    "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,$3) ON CONFLICT(order_id,kind) DO UPDATE SET payload=EXCLUDED.payload,status=EXCLUDED.status,error=NULL,updated_at=NOW()",
+    [orderId, JSON.stringify(payload), process.platform === 'win32' && settings.kitchen_printer_name ? 'pending' : 'manual'],
   );
   return (await client.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [orderId])).rows[0]?.status || 'pending';
 }
@@ -175,11 +174,12 @@ async function startPrinter(io) {
     try {
       const settings = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
       const allowReceiptPrinting = settings.print_mode === 'windows';
+      const allowKitchenPrinting = process.platform === 'win32' && Boolean(settings.kitchen_printer_name);
       const job = await transaction(async (c) => {
         const job = (
           await c.query(
-            "SELECT * FROM print_jobs WHERE status='pending' AND kind<>'kitchen' AND $1::boolean ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
-            [allowReceiptPrinting],
+            "SELECT * FROM print_jobs WHERE status='pending' AND ((kind='kitchen' AND $1::boolean) OR (kind<>'kitchen' AND $2::boolean)) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
+            [allowKitchenPrinting, allowReceiptPrinting],
           )
         ).rows[0];
         if (job)
@@ -191,11 +191,12 @@ async function startPrinter(io) {
       });
       if (!job) return;
       try {
-        if (!settings.printer_name) fail(400, 'Выберите принтер в настройках');
+        const printer = job.kind === 'kitchen' ? settings.kitchen_printer_name : settings.printer_name;
+        if (!printer) fail(400, 'Choose a printer in settings');
         await powershell('Print-Receipt.ps1', {
-          printer: settings.printer_name,
-          width: job.payload.settings.receipt_width,
-          lines: receiptLines(job.payload),
+          printer,
+          width: job.kind === 'kitchen' ? 80 : job.payload.settings.receipt_width,
+          lines: job.kind === 'kitchen' ? kitchenLines(job.payload) : receiptLines(job.payload),
         });
         await pool.query(
           "UPDATE print_jobs SET status='submitted',error=NULL,updated_at=NOW() WHERE id=$1",
