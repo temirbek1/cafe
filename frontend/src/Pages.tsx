@@ -848,7 +848,21 @@ export function SettingsPage({ data, busy, run, revision }: Shared) {
               </>
             )}
             <h2 className="printer-section-title">Чек кухни</h2>
-            <p className="hint">Кухонные чеки будут печататься на тот же принтер, что и чеки кассы. Для автоматической печати выберите режим «Автоматически через Windows» и принтер выше.</p>
+            <Field label="Установленный кухонный принтер">
+              <select
+                value={draft.kitchen_printer_name || ''}
+                onChange={(e) => change('kitchen_printer_name', e.target.value)}
+                disabled={!data.settings.windows_print_available}
+              >
+                <option value="">Печатать вручную в браузере</option>
+                {printers?.printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} · {p.port}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <p className="hint">Выберите принтер кухни из установленных в Windows. Список такой же, как у принтера чеков кассы.</p>
             <h2 className="printer-section-title">QR-код для оплаты</h2>
             <p className="hint">
               Загрузите изображение QR-кода из банка. Оно появится в окне оплаты, когда выбран способ «QR».

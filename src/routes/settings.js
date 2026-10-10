@@ -20,9 +20,8 @@ router.patch('/', admin, async (req, res) => {
   const old = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
   const input = req.body,
     updates = { ...old };
-  for (const key of ['name', 'address', 'phone', 'printer_name'])
+  for (const key of ['name', 'address', 'phone', 'printer_name', 'kitchen_printer_name'])
     if (input[key] !== undefined) updates[key] = input[key] ? text(input[key], key, 200) : '';
-  delete updates.kitchen_printer_name;
   if (input.qr_image !== undefined) {
     const image = input.qr_image;
     if (image === '') updates.qr_image = '';
@@ -53,6 +52,11 @@ router.patch('/', admin, async (req, res) => {
     const available = await printers();
     if (!available.some((p) => p.name === updates.printer_name))
       fail(400, 'Принтер не найден в Windows');
+  }
+  if (updates.kitchen_printer_name) {
+    if (process.platform !== 'win32') fail(400, 'Kitchen printing is available only on Windows');
+    if (!(await printers()).some((p) => p.name === updates.kitchen_printer_name))
+      fail(400, 'Kitchen printer not found in Windows');
   }
   await transaction(async (c) => {
     await c.query('UPDATE settings SET value=$1 WHERE id=TRUE', [JSON.stringify(updates)]);
@@ -102,7 +106,7 @@ router.post(
       const printSettings = (await c.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
       const jobKind = (await c.query('SELECT kind FROM print_jobs WHERE id=$1', [req.params.id])).rows[0]?.kind;
       const mode = jobKind === 'kitchen'
-        ? (process.platform === 'win32' && printSettings.print_mode === 'windows' && printSettings.printer_name ? 'windows' : 'browser')
+        ? (process.platform === 'win32' && printSettings.kitchen_printer_name ? 'windows' : 'browser')
         : printSettings.print_mode;
       const job = (
         await c.query(
