@@ -5,7 +5,7 @@ Set-Location $project
 if (-not (Test-Path '.env')) { throw 'Cafe POS is not installed. Run Install-Cafe.cmd first.' }
 if (-not (Test-Path '.git')) { throw 'This folder is not a Git checkout. Download the new Cafe POS version into this folder, then run Update-Cafe.cmd.' }
 
-& (Join-Path $project 'Stop-Cafe.cmd')
+& (Join-Path $project 'Stop-Cafe.cmd') -NoPause
 if ($LASTEXITCODE -ne 0) { throw 'Could not stop Cafe POS. Update cancelled.' }
 
 git pull --ff-only

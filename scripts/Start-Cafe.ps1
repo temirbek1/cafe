@@ -4,7 +4,7 @@ Set-Location $project
 if (-not (Test-Path '.env') -or -not (Test-Path 'dist/index.html')) { throw 'Run scripts/Install-Cafe.ps1 first.' }
 $port=3000
 Get-Content '.env' | ForEach-Object {if ($_ -match '^PORT=(\d+)') {$port=[int]$Matches[1]}}
-$url="http://localhost:$port"
+$url="http://127.0.0.1:$port"
 function Test-Cafe {
   try { $health=Invoke-RestMethod "$url/health" -TimeoutSec 2; return $health.app -eq 'cafe-pos' -and $health.status -eq 'ok' } catch { return $false }
 }
