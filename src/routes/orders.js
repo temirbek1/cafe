@@ -85,7 +85,7 @@ router.get('/table/:tableId/open', async (req, res) => {
 });
 router.post('/', async (req, res) => {
   const tableId = integer(req.body.table_id, 'Стол'),
-    guests = integer(req.body.guest_count || 1, 'Гости', 1, 1000);
+    guests = 1;
   const comment = req.body.comment ? text(req.body.comment, 'Комментарий', 1000) : null;
   const data = await transaction(async (client) => {
     await activeShift(client);
@@ -115,10 +115,7 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   const data = await transaction(async (client) => {
     const order = await lockOrder(client, req, { editable: true });
-    const guests =
-      req.body.guest_count === undefined
-        ? order.guest_count
-        : integer(req.body.guest_count, 'Гости', 1, 1000);
+    const guests = order.guest_count;
     const comment =
       req.body.comment === undefined
         ? order.comment

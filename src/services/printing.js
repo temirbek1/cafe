@@ -39,7 +39,7 @@ async function queueKitchen(client, orderId) {
   };
   await client.query(
     "INSERT INTO print_jobs(order_id,kind,payload,status) VALUES($1,'kitchen',$2,$3) ON CONFLICT(order_id,kind) DO UPDATE SET payload=EXCLUDED.payload,status=EXCLUDED.status,error=NULL,updated_at=NOW()",
-    [orderId, JSON.stringify(payload), process.platform === 'win32' && settings.kitchen_printer_name ? 'pending' : 'manual'],
+    [orderId, JSON.stringify(payload), process.platform === 'win32' && settings.print_mode === 'windows' && settings.printer_name ? 'pending' : 'manual'],
   );
   return (await client.query("SELECT status FROM print_jobs WHERE order_id=$1 AND kind='kitchen'", [orderId])).rows[0]?.status || 'pending';
 }
@@ -174,7 +174,7 @@ async function startPrinter(io) {
     try {
       const settings = (await pool.query('SELECT value FROM settings WHERE id=TRUE')).rows[0].value;
       const allowReceiptPrinting = settings.print_mode === 'windows';
-      const allowKitchenPrinting = process.platform === 'win32' && Boolean(settings.kitchen_printer_name);
+      const allowKitchenPrinting = process.platform === 'win32' && settings.print_mode === 'windows' && Boolean(settings.printer_name);
       const job = await transaction(async (c) => {
         const job = (
           await c.query(
@@ -191,7 +191,7 @@ async function startPrinter(io) {
       });
       if (!job) return;
       try {
-        const printer = job.kind === 'kitchen' ? settings.kitchen_printer_name : settings.printer_name;
+        const printer = settings.printer_name;
         if (!printer) fail(400, 'Choose a printer in settings');
         await powershell('Print-Receipt.ps1', {
           printer,
